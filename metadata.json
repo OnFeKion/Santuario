@@ -1,0 +1,11 @@
+{
+  "name": "Santuário - Aromaterapia & Bem-estar",
+  "description": "Um refúgio para o seu bem-estar emocional. Grave seus sentimentos e receba recomendações personalizadas de aromaterapia guiadas por IA.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "Audio Analysis",
+    "Smart Recommendations"
+  ]
+}
