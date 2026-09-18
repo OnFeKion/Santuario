@@ -13,6 +13,11 @@ export interface Aroma {
 
 export type View = 'home' | 'recording' | 'analysis' | 'result' | 'history' | 'usage';
 
+export interface AlternativeAroma {
+  aroma: Aroma;
+  reason?: string;
+}
+
 export interface AnalysisResult {
   emotion: {
     label: string;
@@ -20,6 +25,7 @@ export interface AnalysisResult {
   };
   aroma: Aroma;
   aromaExplanation: string;
+  alternatives: AlternativeAroma[];
   usageMethod: string;
   quote: string;
   transcription: string;
