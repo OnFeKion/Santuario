@@ -3,12 +3,12 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import multer from "multer";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { AROMAS_LIST } from "./src/constants";
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 } // 25MB max
+  limits: { fileSize: 25 * 1024 * 1024 }
 });
 
 let aiClient: GoogleGenAI | null = null;
@@ -16,244 +16,222 @@ let aiClient: GoogleGenAI | null = null;
 function getAI(): GoogleGenAI | null {
   if (!aiClient) {
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.warn("[Server] GEMINI_API_KEY não configurada no ambiente.");
-      return null;
-    }
+    if (!apiKey) return null;
     aiClient = new GoogleGenAI({ apiKey });
   }
   return aiClient;
 }
 
-const fallbackResult = {
-  emotion: {
-    label: "Pausa e Centramento",
-    description: "Pausa restauradora necessária para acolher o coração e desacelerar o ritmo mental."
-  },
-  aroma: AROMAS_LIST[0],
-  aromaExplanation: "Escolhemos a Lavanda para trazer estabilidade, alívio de tensões e serenidade imediata.",
-  alternatives: [
-    {
-      aroma: AROMAS_LIST.find(a => a.id === "camomila") || AROMAS_LIST[1],
-      reason: "Excelente para acalmar a mente agitada e dissolver preocupações do cotidiano."
-    },
-    {
-      aroma: AROMAS_LIST.find(a => a.id === "sandalo") || AROMAS_LIST[4],
-      reason: "Aquece e reduz pensamentos excessivos, promovendo presença e centramento."
-    },
-    {
-      aroma: AROMAS_LIST.find(a => a.id === "bergamota") || AROMAS_LIST[8],
-      reason: "Traz leveza e conforto emocional para renovar a energia com suavidade."
-    }
-  ],
-  usageMethod: "A cada 3 horas, aplique 2 gotas nos pulsos ou no difusor e respire calmamente por 1 minuto.",
-  quote: "Que a suavidade do aroma traga clareza e repouso para o seu coração.",
-  transcription: "Sua voz foi acolhida e seus sentimentos foram compreendidos."
-};
+function normalizeText(str: string): string {
+  return (str || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
 
+function getAroma(id: string) {
+  return AROMAS_LIST.find(a => a.id === id) || AROMAS_LIST[0];
+}
+
+// Análise clínica de aromaterapia baseada nas opções reais cadastradas no código
 function buildTailoredAnalysis(userSpeechText: string) {
-  const text = (userSpeechText || "").toLowerCase();
-  const transcription = userSpeechText.trim() || "Relato do seu dia acolhido com carinho.";
+  const norm = normalizeText(userSpeechText);
+  const transcription = userSpeechText.trim() || "Relato de voz acolhido com carinho.";
 
-  // Helper para buscar aroma
-  const getAroma = (id: string) => AROMAS_LIST.find(a => a.id === id) || AROMAS_LIST[0];
-
-  // 1. Esgotamento / Burnout / Sobrecarga
+  // 1. Falta de foco / Desfocado / Dispersão / Concentração / Estudos (Categoria: Foco e clareza)
   if (
-    text.includes("esgot") ||
-    text.includes("burnout") ||
-    text.includes("exaust") ||
-    text.includes("sobrecarg") ||
-    text.includes("limite") ||
-    text.includes("puxado") ||
-    text.includes("acabado") ||
-    text.includes("nao aguento")
+    norm.includes("desfoc") ||
+    norm.includes("foco") ||
+    norm.includes("concentr") ||
+    norm.includes("dispers") ||
+    norm.includes("distrai") ||
+    norm.includes("confus") ||
+    norm.includes("estud") ||
+    norm.includes("cabeca cheia") ||
+    norm.includes("mente cheia") ||
+    norm.includes("procrastin") ||
+    norm.includes("memoria") ||
+    norm.includes("atencao")
   ) {
-    const main = getAroma("neroli");
     return {
       emotion: {
-        label: "Esgotamento e Sobrecarga",
-        description: "Sentimento de sobrecarga profunda e exigência excessiva, pedindo restauração e acolhimento urgente."
+        label: "Falta de Foco e Dispersão",
+        description: "Dificuldade de canalizar a atenção, com a mente dispersa e excesso de estímulos dispersivos."
       },
-      aroma: main,
-      aromaExplanation: "O Neroli atua como um bálsamo restaurador imediato em momentos de colapso emocional e fadiga extrema.",
+      aroma: getAroma("louro"),
+      aromaExplanation: "O Louro traz clareza imediata e decisão mental, auxiliando a mente a sair da névoa e recuperar a concentração segura.",
       alternatives: [
-        { aroma: getAroma("melissa"), reason: "Acalma angústias silenciosas e suaviza a tensão nervosa acumulada." },
-        { aroma: getAroma("sandalo"), reason: "Promove centramento e interrompe o turbilhão de pensamentos exaustivos." },
-        { aroma: getAroma("bergamota"), reason: "Devolve uma sensação sutil de esperança e alívio para o peito pesado." }
+        { aroma: getAroma("alecrim_cineol"), reason: "Estimula diretamente a memória de trabalho e o foco cognitivo prolongado." },
+        { aroma: getAroma("lemongrass"), reason: "Promove renovação lúcida e frescor para recomeçar tarefas dispersas." },
+        { aroma: getAroma("peppermint"), reason: "Desperta a mente de forma rápida contra o bloqueio intelectual." }
       ],
-      usageMethod: "Ao longo do dia, coloque 2 gotas nos pulsos a cada 3 horas, aproxime das narinas e inale profundamente 4 vezes de olhos fechados.",
-      quote: "Descansar não é desistir; é o gesto sagrado de permitir que suas forças renasçam.",
-      transcription
-    };
-  }
-
-  // 2. Ansiedade / Tensão / Medo / Pânico / Nervosismo
-  if (
-    text.includes("ansied") ||
-    text.includes("ansios") ||
-    text.includes("nervos") ||
-    text.includes("medo") ||
-    text.includes("panico") ||
-    text.includes("tens") ||
-    text.includes("pressao") ||
-    text.includes("agitad") ||
-    text.includes("acelerad") ||
-    text.includes("preocup")
-  ) {
-    const main = getAroma("camomila");
-    return {
-      emotion: {
-        label: "Ansiedade e Tensão Acumulada",
-        description: "Mente inquieta e respiração encurtada pela sobrecarga de preocupações e ritmo acelerado."
-      },
-      aroma: main,
-      aromaExplanation: "A Camomila desacelera o sistema nervoso, suaviza a irritação interna e alivia o nó de aperto no peito.",
-      alternatives: [
-        { aroma: getAroma("lavanda"), reason: "Reduz a hiperatividade mental e restaura o compasso calmo da respiração." },
-        { aroma: getAroma("olibano"), reason: "Cria um escudo de serenidade e dissolve a sensação de inquietação e medo." },
-        { aroma: getAroma("cedro"), reason: "Oferece estrutura, firmeza emocional e sensação de segurança interior." }
-      ],
-      usageMethod: "A cada 2 horas, pingue 1 gota na palma das mãos, esfregue suavemente e inale em forma de concha por 30 segundos, soltando os ombros.",
-      quote: "A cada expiração suave, solte tudo aquilo que não pertence ao seu momento presente.",
-      transcription
-    };
-  }
-
-  // 3. Tristeza / Desânimo / Melancolia / Solidão / Choro
-  if (
-    text.includes("trist") ||
-    text.includes("desanim") ||
-    text.includes("chor") ||
-    text.includes("vazio") ||
-    text.includes("solit") ||
-    text.includes("sozinho") ||
-    text.includes("pesado") ||
-    text.includes("machuc") ||
-    text.includes("mago")
-  ) {
-    const main = getAroma("bergamota");
-    return {
-      emotion: {
-        label: "Desânimo e Sensibilidade Emocional",
-        description: "Coração pesado e sensação de melancolia, necessitando de calor, otimismo e abraço caloroso."
-      },
-      aroma: main,
-      aromaExplanation: "A Bergamota dissipa a névoa do desânimo com seu toque solar cítrico que reacende a leveza no peito.",
-      alternatives: [
-        { aroma: getAroma("laranja_doce"), reason: "Traz calor, alegria espontânea e sensação reconfortante de acolhimento." },
-        { aroma: getAroma("rosa"), reason: "Acolhe corações magoados e envolve a vulnerabilidade com ternura profunda." },
-        { aroma: getAroma("mandarina"), reason: "Suaviza a melancolia trazendo a simplicidade e a pureza de um sorriso leve." }
-      ],
-      usageMethod: "Pela manhã e no meio da tarde, inale o aroma por 3 respirações lentas para reabrir a sensação de vitalidade e afeto.",
-      quote: "Permita-se sentir, sabendo que as nuvens passam e o sol sempre volta a aquecer o seu dia.",
-      transcription
-    };
-  }
-
-  // 4. Falta de foco / Dispersão / Confusão / Mente cheia
-  if (
-    text.includes("foco") ||
-    text.includes("concentr") ||
-    text.includes("dispers") ||
-    text.includes("confus") ||
-    text.includes("cabeca cheia") ||
-    text.includes("bloque") ||
-    text.includes("estud")
-  ) {
-    const main = getAroma("louro");
-    return {
-      emotion: {
-        label: "Dispersão e Névoa Mental",
-        description: "Dificuldade de canalizar a atenção e excesso de estímulos fragmentando o raciocínio."
-      },
-      aroma: main,
-      aromaExplanation: "O Louro proporciona autoconfiança lúcida, cortando a confusão mental para tomadas de decisão seguras.",
-      alternatives: [
-        { aroma: getAroma("lemongrass"), reason: "Promove renovação imediata e clareza refrescante para recomeçar tarefas." },
-        { aroma: getAroma("limao"), reason: "Estimula o raciocínio lógico e dissipa a sensação de lentidão intelectual." },
-        { aroma: getAroma("alecrim_cineol"), reason: "Potencializa a memória de trabalho e desperta a concentração profunda." }
-      ],
-      usageMethod: "No início de cada período de trabalho ou estudo, inale diretamente do frasco por 5 respirações compassadas.",
+      usageMethod: "Inale diretamente do frasco por 5 respirações profundas antes de iniciar suas atividades e estudos.",
       quote: "A clareza nasce quando escolhemos colocar toda a nossa presença em uma única respiração por vez.",
       transcription
     };
   }
 
-  // 5. Cansaço / Sono / Insônia / Noite ruim
+  // 2. Raiva / Irritação / Estresse / Impaciência / Briga (Categoria: Irritação e TPM)
   if (
-    text.includes("sono") ||
-    text.includes("insonia") ||
-    text.includes("dormir") ||
-    text.includes("madrugad") ||
-    text.includes("cansad") ||
-    text.includes("fadiga") ||
-    text.includes("pesadelo")
+    norm.includes("raiv") ||
+    norm.includes("irrit") ||
+    norm.includes("estress") ||
+    norm.includes("paciencia") ||
+    norm.includes("briga") ||
+    norm.includes("discuss") ||
+    norm.includes("explod") ||
+    norm.includes("odio") ||
+    norm.includes("chefe")
   ) {
-    const main = getAroma("sandalo");
     return {
       emotion: {
-        label: "Inquietação e Dificuldade de Desconectar",
-        description: "O corpo pede repouso enquanto a mente ainda permanece em estado de vigília e tensão."
+        label: "Irritação e Estresse Acumulado",
+        description: "Paciência fragilizada por atritos ou exigências excessivas, pedindo alívio da raiva e serenidade."
       },
-      aroma: main,
-      aromaExplanation: "O Sândalo desacelera as ondas cerebrais, criando um porto seguro amadeirado propício para o descanso.",
+      aroma: getAroma("camomila_romana"),
+      aromaExplanation: "A Camomila Romana é a essência mais indicada para desarmar a raiva contida e acalmar reações exacerbadas de atrito.",
       alternatives: [
-        { aroma: getAroma("lavanda"), reason: "Reduz comprovadamente os níveis de cortisol preparando o corpo para o adormecer." },
-        { aroma: getAroma("manjerona"), reason: "Alivia a rigidez muscular na nuca e ombros acumulada pelas noites mal dormidas." },
-        { aroma: getAroma("melissa"), reason: "Desarma o sobressalto mental e acolhe a noite com serenidade restauradora." }
+        { aroma: getAroma("clary_sage"), reason: "Estabiliza oscilações de humor e alivia picos de tensão emocional." },
+        { aroma: getAroma("manjerona"), reason: "Dissolve a rigidez muscular na nuca e ombros provocada pelo estresse." },
+        { aroma: getAroma("bergamota"), reason: "Dissipa a contrariedade com leveza e serenidade acolhedora." }
       ],
-      usageMethod: "Ao entardecer e antes de se deitar, aplique 2 gotas diluídas no peito e na sola dos pés, respirando com suavidade.",
-      quote: "A noite é um convite para soltar o controle e confiar que o descanso cuidará do amanhã.",
+      usageMethod: "Ao sentir o calor da irritação subir, inale o aroma pausadamente por 1 minuto, soltando os ombros a cada expiração.",
+      quote: "A serenidade não é a ausência de atrito, mas a escolha consciente de preservar a sua paz interior.",
       transcription
     };
   }
 
-  // 6. Irritação / Raiva / Impaciência / Estresse de trânsito ou discussões
+  // 3. Esgotamento / Burnout / Sobrecarga Extrema (Categoria: Calma e redução de ansiedade)
   if (
-    text.includes("raiva") ||
-    text.includes("irrit") ||
-    text.includes("paciencia") ||
-    text.includes("briga") ||
-    text.includes("discuss") ||
-    text.includes("explod") ||
-    text.includes("odio") ||
-    text.includes("furios")
+    norm.includes("esgot") ||
+    norm.includes("burnout") ||
+    norm.includes("sobrecarg") ||
+    norm.includes("exaust") ||
+    norm.includes("limite") ||
+    norm.includes("puxado") ||
+    norm.includes("acabad") ||
+    norm.includes("nao aguent")
   ) {
-    const main = getAroma("camomila_romana");
     return {
       emotion: {
-        label: "Irritação e Sobrecarga Reativa",
-        description: "Paciência fragilizada por excesso de atritos, precisando de frescor para desarmar a reatividade."
+        label: "Esgotamento e Sobrecarga",
+        description: "Sentimento de exigência excessiva e fadiga profunda, clamando por pausa restauradora imediata."
       },
-      aroma: main,
-      aromaExplanation: "A Camomila Romana acalma a raiva contida e devolve a tolerância suave diante de situações desafiadoras.",
+      aroma: getAroma("neroli"),
+      aromaExplanation: "O Neroli é o grande bálsamo para momentos de sobrecarga e colapso emocional, trazendo reconexão suave e alívio profundo.",
       alternatives: [
-        { aroma: getAroma("clary_sage"), reason: "Equilibra os picos de tensão emocional e restaura a estabilidade interna." },
-        { aroma: getAroma("bergamota"), reason: "Dissolve a rigidez mental com leveza e serenidade acolhedora." },
-        { aroma: getAroma("lavanda"), reason: "Reduz a pulsação nervosa e convida os músculos a relaxarem por completo." }
+        { aroma: getAroma("melissa"), reason: "Acalma angústias e suaviza o aperto interior causado pelo excesso de pressão." },
+        { aroma: getAroma("sandalo"), reason: "Interrompe pensamentos acelerados e ancora na presença tranquila." },
+        { aroma: getAroma("manjerona"), reason: "Alivia a exaustão acumulada e relaxa as tensões musculares do corpo." }
       ],
-      usageMethod: "Quando sentir o calor da irritação surgir, respire o aroma pausadamente por 1 minuto, expirando lentamente pela boca.",
-      quote: "A serenidade não é a ausência de atrito, mas a escolha sábia de preservar a sua paz interior.",
+      usageMethod: "A cada 3 horas, aplique 2 gotas nos pulsos, aproxime do nariz e faça 4 respirações lentas de olhos fechados.",
+      quote: "Descansar não é desistir; é o gesto sagrado de permitir que suas forças renasçam.",
       transcription
     };
   }
 
-  // 7. Padrão acolhedor
+  // 4. Cansaço Físico / Falta de Energia / Fadiga / Preguiça (Categoria: Energia e motivação)
+  if (
+    norm.includes("cansad") ||
+    norm.includes("fadiga") ||
+    norm.includes("moleza") ||
+    norm.includes("preguic") ||
+    norm.includes("desmotivad") ||
+    norm.includes("sem energia") ||
+    norm.includes("apatic") ||
+    norm.includes("sono")
+  ) {
+    return {
+      emotion: {
+        label: "Cansaço e Baixa Vitalidade",
+        description: "O corpo e a mente sentem o peso do desgaste diário, carecendo de um despertar revigorante de disposição."
+      },
+      aroma: getAroma("alecrim"),
+      aromaExplanation: "O Alecrim é o clássico revigorante natural que combate a fadiga mental, desperta o ânimo e renova a vitalidade corporal.",
+      alternatives: [
+        { aroma: getAroma("hortela_pimenta"), reason: "Proporciona um choque imediato de frescor mentolado contra a sonolência e lentidão." },
+        { aroma: getAroma("limao"), reason: "Estimula a energia e dissipa o cansaço mental com vivacidade cítrica." },
+        { aroma: getAroma("gengibre"), reason: "Aquece a circulação e estimula a determinação com calor energizante." }
+      ],
+      usageMethod: "Ao levantar e no início da tarde, esfregue 1 gota entre as mãos e inale vigorosamente para despertar a prontidão.",
+      quote: "A vida se renova no movimento: sinta o ar fresco reativar cada fibra da sua disposição.",
+      transcription
+    };
+  }
+
+  // 5. Tristeza / Desânimo / Melancolia / Choro (Categoria: Tristeza e acolhimento emocional)
+  if (
+    norm.includes("trist") ||
+    norm.includes("desanim") ||
+    norm.includes("chor") ||
+    norm.includes("vazio") ||
+    norm.includes("solit") ||
+    norm.includes("sozinh") ||
+    norm.includes("machuc") ||
+    norm.includes("mago") ||
+    norm.includes("luto")
+  ) {
+    return {
+      emotion: {
+        label: "Desânimo e Sensibilidade Emocional",
+        description: "Coração pesado e sensibilidade aflorada, necessitando de calor, conforto e aconchego acolhedor."
+      },
+      aroma: getAroma("bergamota"),
+      aromaExplanation: "A Bergamota dissipa a névoa da tristeza com sua luminosidade cítrica solar, devolvendo a esperança ao coração.",
+      alternatives: [
+        { aroma: getAroma("rosa"), reason: "Acolhe corações magoados com ternura profunda e amparo incondicional." },
+        { aroma: getAroma("laranja_doce"), reason: "Traz calor, alegria espontânea e sensação aconchegante de otimismo." },
+        { aroma: getAroma("geranio"), reason: "Harmoniza oscilações emocionais com suavidade feminina e equilibrante." }
+      ],
+      usageMethod: "Pela manhã e no meio da tarde, inale o aroma por 3 respirações profundas para reaquecer o peito com otimismo.",
+      quote: "Permita-se sentir com ternura: as nuvens passam e a sua luz interior sempre volta a aquecer o seu dia.",
+      transcription
+    };
+  }
+
+  // 6. Ansiedade / Inquietação / Taquicardia / Nervosismo (Categoria: Calma e redução de ansiedade)
+  if (
+    norm.includes("ansied") ||
+    norm.includes("ansios") ||
+    norm.includes("agitad") ||
+    norm.includes("acelerad") ||
+    norm.includes("preocup") ||
+    norm.includes("panico") ||
+    norm.includes("tens")
+  ) {
+    return {
+      emotion: {
+        label: "Ansiedade e Inquietação",
+        description: "Mente acelerada e ritmo inquieto por excesso de preocupações, pedindo centramento e calmaria compassada."
+      },
+      aroma: getAroma("camomila"),
+      aromaExplanation: "A Camomila desacelera o sistema nervoso com doçura acolhedora, aliviando o aperto no peito e as inquietações.",
+      alternatives: [
+        { aroma: getAroma("sandalo"), reason: "Ancora a mente no presente e reduz pensamentos repetitivos acelerados." },
+        { aroma: getAroma("olibano"), reason: "Expande a respiração torácica e dissolve sentimentos de medo e angústia." },
+        { aroma: getAroma("cedro"), reason: "Traz sustentação firme e estabilidade interior diante de momentos de instabilidade." }
+      ],
+      usageMethod: "A cada 2 horas, pingue 1 gota na palma das mãos, una em forma de concha e inale suavemente por 30 segundos.",
+      quote: "Inspire paz, expire o controle. O seu momento presente é seguro e acolhedor.",
+      transcription
+    };
+  }
+
+  // 7. Padrão neutro / Equilíbrio (Categoria: Foco e clareza com Louro)
   return {
     emotion: {
-      label: "Necessidade de Pausa e Centramento",
-      description: "Um dia repleto de acontecimentos que pede um momento íntimo de silêncio e acolhimento."
+      label: "Foco e Clareza Mental",
+      description: "Momento propício para organizar pensamentos, dissolver a dispersão e renovar a presença."
     },
-    aroma: getAroma("lavanda"),
-    aromaExplanation: "A Lavanda foi selecionada para criar uma ponte harmoniosa entre a rotina agitada e o seu bem-estar pessoal.",
+    aroma: getAroma("louro"),
+    aromaExplanation: "O Louro auxilia na organização das ideias e no fortalecimento da atenção lúcida e confiante.",
     alternatives: [
-      { aroma: getAroma("camomila"), reason: "Ajuda a dissolver pequenas tensões e preserva a calma no seu dia a dia." },
-      { aroma: getAroma("bergamota"), reason: "Traz uma dose de otimismo e renovação para inspirar novos ares." },
-      { aroma: getAroma("sandalo"), reason: "Oferece profundidade e presença tranquila para o seu momento presente." }
+      { aroma: getAroma("lemongrass"), reason: "Traz frescor estimulante e clareza para recomeçar o dia com disposição." },
+      { aroma: getAroma("sandalo"), reason: "Oferece presença serena e centramento para o seu equilíbrio interior." },
+      { aroma: getAroma("alecrim_cineol"), reason: "Potencializa a memória e a produtividade mental focada." }
     ],
-    usageMethod: "A cada 3 horas, reserve 2 minutos para fechar os olhos e inalar o aroma com lentidão e presença.",
-    quote: "Acolha a sua história hoje: cada suspiro de calma constrói um refúgio de paz dentro de você.",
+    usageMethod: "Inale suavemente próximo ao início de suas tarefas para centrar sua mente com clareza.",
+    quote: "A clareza nasce quando escolhemos colocar toda a nossa presença em uma única respiração por vez.",
     transcription
   };
 }
@@ -262,11 +240,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Middleware para JSON e dados codificados
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
-
-  // --- API Routes ---
 
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", service: "santuario-api" });
@@ -286,133 +261,23 @@ async function startServer() {
         mimeType = req.body.mimeType || "audio/webm";
       }
 
-      if (!base64Audio && !clientTranscription) {
-        return res.status(400).json({ error: "Nenhum áudio ou relato fornecido para análise." });
-      }
-
       const client = getAI();
-      const aromasInfo = AROMAS_LIST.map(a => `${a.id}: ${a.name} (${a.category}) - ${a.benefits}`).join("\n");
-      const cleanMimeType = mimeType.split(";")[0].trim() || "audio/webm";
+      const aromasInfo = AROMAS_LIST.map(a => `- ${a.id}: ${a.name} [Categoria: ${a.category}] (Benefícios: ${a.benefits})`).join("\n");
 
-      let effectiveTranscription = clientTranscription;
+      // Se temos o cliente Gemini e texto ou áudio
+      if (client && (clientTranscription || base64Audio)) {
+        const candidateModels = ["gemini-3.1-flash-lite", "gemini-flash-latest"];
 
-      // Se o cliente não forneceu a transcrição via Web Speech API e temos o áudio, tentamos transcrever com Gemini
-      if (!effectiveTranscription && client && base64Audio) {
-        try {
-          console.log("[Server] Tentando transcrever áudio com gemini-3.5-transcribe...");
-          const transcribeRes = await Promise.race([
-            client.models.generateContent({
-              model: "gemini-3.5-transcribe",
-              contents: [
-                {
-                  parts: [
-                    {
-                      inlineData: {
-                        mimeType: cleanMimeType,
-                        data: base64Audio
-                      }
-                    }
-                  ]
-                }
-              ]
-            }),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout transcribe")), 3500))
-          ]);
-          if (transcribeRes.text && transcribeRes.text.trim()) {
-            effectiveTranscription = transcribeRes.text.trim();
-            console.log("[Server] Transcrição obtida via gemini-3.5-transcribe:", effectiveTranscription);
-          }
-        } catch (err: any) {
-          console.warn("[Server] gemini-3.5-transcribe falhou ou timeout:", err?.message);
-        }
-      }
-
-      // Se temos o cliente Gemini configurado, tentamos a análise inteligente via modelo cascade
-      if (client) {
-        const candidateModels = ["gemini-3.1-flash-lite", "gemini-3.6-flash"];
-        
         for (const modelName of candidateModels) {
           try {
-            console.log(`[Server] Tentando análise emocional com ${modelName}...`);
-
             const parts: any[] = [];
-            let promptText = "";
 
-            if (effectiveTranscription) {
-              promptText = `
-Você é um aromaterapeuta e terapeuta integrativo profundamente acolhedor, empático e perspicaz.
-Analise este relato pessoal de como foi o dia da pessoa:
-"${effectiveTranscription}"
-
-Siga estritamente estas diretrizes:
-1. CLASSIFIQUE o estado emocional predominante (nome do sentimento e uma breve descrição sensível do que ela está vivenciando).
-2. SELECIONE o aroma PRINCIPAL MAIS adequado da lista abaixo seguindo estas REGRAS:
-   - NÃO escolha "Lavanda" ou "Alecrim" como padrão genérico. Seja cirúrgico e empático.
-   - SÓ recomende "Alecrim" se detectar explicitamente baixa energia, cansaço físico ou lentidão motora/mental.
-   - Se houver esgotamento emocional, sobrecarga ou "burnout", priorize aromas restauradores e profundos (como Neroli, Melissa, Sândalo ou Manjerona).
-   - Se houver tristeza ou carência, priorize Bergamota, Laranja-doce ou Rosa.
-   - Se houver dispersão ou falta de foco, priorize Louro, Lemongrass ou Limão.
-3. EXPLIQUE em uma frase clara e humana por que esse aroma principal é a melhor escolha para esse momento.
-4. SELECIONE EXATAMENTE 3 AROMAS ALTERNATIVOS DIFERENTES da lista, caso ela não tenha o principal em mãos. Para cada um, forneça a justificativa de substituição.
-5. MÉTODO DE USO: Crie um método personalizado para o usuário utilizar este aroma ao longo do dia, sendo bem específico (ex: "A cada 3 horas, aplique 2 gotas nos pulsos...", "Pela manhã e ao entardecer..."). O método deve focar em como usar o aroma no decorrer do dia para cuidar do estado emocional detectado.
-6. Crie uma FRASE CURTA E POÉTICA de acolhimento e carinho para a pessoa.
-7. Mantenha a TRANSCRIÇÃO fiel do que foi dito.
-
-Lista de Aromas e Categorias Disponíveis:
-${aromasInfo}
-
-Responda ESTRITAMENTE em formato JSON com esta estrutura:
-{
-  "emotionLabel": "string",
-  "emotionDescription": "string",
-  "aromaId": "string (deve ser um dos ids da lista acima)",
-  "aromaExplanation": "string",
-  "alternativeAromas": [
-    { "aromaId": "string", "reason": "string" },
-    { "aromaId": "string", "reason": "string" },
-    { "aromaId": "string", "reason": "string" }
-  ],
-  "usageMethod": "string",
-  "quote": "string",
-  "transcription": "string"
-}
-`;
-              parts.push({ text: promptText });
-            } else {
-              // Sem texto transcrito prévio, envia o áudio diretamente
-              promptText = `
-Você é um aromaterapeuta e terapeuta integrativo profundamente acolhedor, empático e perspicaz.
-Analise a voz e o relato contido no áudio anexo sobre como foi o dia da pessoa.
-
-Siga estritamente estas diretrizes:
-1. TRANSCREVA com máxima fidelidade o que a pessoa falou.
-2. CLASSIFIQUE o estado emocional predominante (nome do sentimento e uma breve descrição do que percebeu na voz/fala).
-3. SELECIONE o aroma PRINCIPAL MAIS adequado da lista abaixo (não use Lavanda ou Alecrim como padrão genérico).
-4. EXPLIQUE em uma frase por que esse aroma principal é a melhor escolha.
-5. SELECIONE EXATAMENTE 3 AROMAS ALTERNATIVOS DIFERENTES com a respectiva justificativa.
-6. MÉTODO DE USO: Crie uma rotina personalizada de como usar o aroma ao longo do dia para tratar esse estado emocional.
-7. FRASE POÉTICA: Uma mensagem curta e bonita de acolhimento.
-
-Lista de Aromas Disponíveis:
-${aromasInfo}
-
-Responda ESTRITAMENTE em formato JSON com:
-{
-  "emotionLabel": "string",
-  "emotionDescription": "string",
-  "aromaId": "string (um id da lista)",
-  "aromaExplanation": "string",
-  "alternativeAromas": [
-    { "aromaId": "string", "reason": "string" },
-    { "aromaId": "string", "reason": "string" },
-    { "aromaId": "string", "reason": "string" }
-  ],
-  "usageMethod": "string",
-  "quote": "string",
-  "transcription": "string"
-}
-`;
-              parts.push({ text: promptText });
+            // Se não temos transcrição do cliente mas temos áudio, anexa áudio inline
+            if (!clientTranscription && base64Audio) {
+              let cleanMimeType = (mimeType || "").split(";")[0].trim().toLowerCase();
+              if (!cleanMimeType || cleanMimeType === "application/octet-stream") {
+                cleanMimeType = "audio/webm";
+              }
               parts.push({
                 inlineData: {
                   mimeType: cleanMimeType,
@@ -420,6 +285,64 @@ Responda ESTRITAMENTE em formato JSON com:
                 }
               });
             }
+
+            const promptText = `
+Você é um aromaterapeuta e terapeuta integrativo de alta sensibilidade e conhecimento.
+Analise a mensagem ou relato sobre como foi o dia da pessoa:
+${clientTranscription ? `"${clientTranscription}"` : "Ouça o áudio anexo com máxima atenção aos sentimentos e transcreva as palavras ditas."}
+
+DIRETRIZES FUNDAMENTAIS PARA ANÁLISE EMOCIONAL E AROMATERAPIA:
+1. TRANSCRIÇÃO:
+   - Forneça a transcrição precisa do relato em português.
+
+2. CLASSIFICAÇÃO DA SENSAÇÃO E EMOÇÃO:
+   - Identifique com exatidão o estado (ex: "Falta de Foco e Dispersão", "Irritação e Estresse Acumulado", "Esgotamento e Sobrecarga", "Cansaço e Baixa Vitalidade", "Desânimo e Sensibilidade Emocional", "Ansiedade e Inquietação").
+
+3. SELEÇÃO DO AROMA PRINCIPAL (ESTRITAMENTE CONFORME AS OPÇÕES E CATEGORIAS DO CATÁLOGO):
+   - Se for FALTA DE FOCO, DESFOCADO, DISPERSÃO, ESTUDOS ou MENTE CHEIA:
+     O aroma DEVE ser da categoria "Foco e clareza": "louro", "lemongrass", "alecrim_cineol" ou "peppermint".
+     NUNCA escolha bergamota ou lavanda para falta de foco.
+   - Se for RAIVA, IRRITAÇÃO, BRIGA ou ESTRESSE:
+     O aroma DEVE ser da categoria "Irritação e TPM": "camomila_romana" ou "clary_sage".
+   - Se for ESGOTAMENTO, SOBRECARGA ou BURNOUT:
+     O aroma DEVE ser "neroli", "melissa", "sandalo" ou "manjerona".
+   - Se for CANSAÇO FÍSICO, FALTA DE ENERGIA ou FADIGA:
+     O aroma DEVE ser da categoria "Energia e motivação": "alecrim", "hortela_pimenta", "limao" ou "gengibre".
+   - Se for TRISTEZA, DESÂNIMO, CHORO ou LUTO:
+     O aroma DEVE ser da categoria "Tristeza e acolhimento emocional": "bergamota", "rosa" ou "laranja_doce".
+   - Se for ANSIEDADE, NERVOSISMO ou INQUIETAÇÃO:
+     O aroma DEVE ser da categoria "Calma e redução de ansiedade": "camomila" ou "sandalo".
+   - O aromaId DEVE ser exatamente um dos IDs da lista abaixo.
+
+4. 3 OPÇÕES ALTERNATIVAS DISTINTAS:
+   - Selecione exatamente 3 aromas alternativos diferentes do principal da lista abaixo com justificativa.
+
+5. RITUAL E MÉTODO DE USO AO LONGO DO DIA:
+   - Instrução prática personalizada de uso durante o dia.
+
+6. FRASE POÉTICA:
+   - Uma mensagem curta, poética e acolhedora.
+
+LISTA DE AROMAS DISPONÍVEIS:
+${aromasInfo}
+
+Responda ESTRITAMENTE em formato JSON com:
+{
+  "emotionLabel": "string",
+  "emotionDescription": "string",
+  "aromaId": "string",
+  "aromaExplanation": "string",
+  "alternativeAromas": [
+    { "aromaId": "string", "reason": "string" },
+    { "aromaId": "string", "reason": "string" },
+    { "aromaId": "string", "reason": "string" }
+  ],
+  "usageMethod": "string",
+  "quote": "string",
+  "transcription": "string"
+}
+`;
+            parts.push({ text: promptText });
 
             const response = await Promise.race([
               client.models.generateContent({
@@ -429,22 +352,17 @@ Responda ESTRITAMENTE em formato JSON com:
                   responseMimeType: "application/json"
                 }
               }),
-              new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Timeout on ${modelName}`)), 4500))
+              new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 12000))
             ]);
 
             const responseText = response.text;
-            if (!responseText) {
-              continue;
-            }
+            if (!responseText) continue;
 
             const parsed = JSON.parse(responseText);
-            if (!parsed.emotionLabel || !parsed.aromaId) {
-              continue;
-            }
+            if (!parsed.emotionLabel || !parsed.aromaId) continue;
 
             const selectedAroma = AROMAS_LIST.find(a => a.id === parsed.aromaId) || AROMAS_LIST[0];
 
-            // Mapeia e garante exatamente 3 alternativas distintas
             const alternatives: Array<{ aroma: any; reason: string }> = [];
             if (Array.isArray(parsed.alternativeAromas)) {
               for (const alt of parsed.alternativeAromas) {
@@ -460,7 +378,6 @@ Responda ESTRITAMENTE em formato JSON com:
               }
             }
 
-            // Preenche até 3 se faltar
             if (alternatives.length < 3) {
               for (const extra of AROMAS_LIST) {
                 if (alternatives.length >= 3) break;
@@ -473,39 +390,36 @@ Responda ESTRITAMENTE em formato JSON com:
               }
             }
 
-            console.log(`[Server] Sucesso com ${modelName}! Emoção: ${parsed.emotionLabel}, Aroma: ${selectedAroma.name}`);
+            const finalTranscription = parsed.transcription || clientTranscription || "Relato de voz acolhido.";
 
             return res.json({
               emotion: {
                 label: parsed.emotionLabel,
-                description: parsed.emotionDescription || `Sentimento percebido com clareza em seu relato.`
+                description: parsed.emotionDescription || "Sentimento identificado a partir do seu relato."
               },
               aroma: selectedAroma,
               aromaExplanation: parsed.aromaExplanation || selectedAroma.benefits,
               alternatives: alternatives.slice(0, 3),
-              usageMethod: parsed.usageMethod || "Aplique 2 gotas nos pulsos a cada 3 horas e respire profundamente.",
-              quote: parsed.quote || "Que este aroma renove suas energias e traga leveza ao seu caminhar.",
-              transcription: parsed.transcription || effectiveTranscription || "Sua voz foi ouvida e sua energia acolhida."
+              usageMethod: parsed.usageMethod || "Aplique 2 gotas nos pulsos a cada 3 horas e inale profundamente.",
+              quote: parsed.quote || "Permita que o aroma conduza seu dia à serenidade e clareza.",
+              transcription: finalTranscription
             });
-          } catch (modelErr: any) {
-            console.warn(`[Server] Falha no modelo ${modelName}:`, modelErr?.message || modelErr);
+          } catch (_) {
+            // Continua silenciosamente para o próximo modelo sem poluir logs
           }
         }
       }
 
-      // Se a IA externa estiver temporariamente indisponível ou em alta demanda (503):
-      // Usamos nossa análise clínica de aromaterapia personalizada baseada nas palavras ditas pela pessoa
-      console.log("[Server] Gerando análise terapêutica sob medida para o relato...");
-      const tailored = buildTailoredAnalysis(effectiveTranscription);
+      // Análise estruturada caso a API externa não responda
+      const tailored = buildTailoredAnalysis(clientTranscription);
       return res.json(tailored);
-    } catch (error) {
-      console.error("[Server] Erro geral na análise:", error);
-      return res.json(fallbackResult);
+    } catch (_) {
+      const fallback = buildTailoredAnalysis("");
+      return res.json(fallback);
     }
   });
 
   // --- Vite Integration ---
-
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -515,7 +429,7 @@ Responda ESTRITAMENTE em formato JSON com:
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get("*", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

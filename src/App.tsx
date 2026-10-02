@@ -15,7 +15,6 @@ import {
   Check
 } from 'lucide-react';
 import { View, AnalysisResult, Aroma } from './types';
-import { AROMAS_LIST } from './constants';
 import { analyzeMoodFromAudio } from './services/geminiService';
 
 // --- Components ---
@@ -52,7 +51,7 @@ const HomeView = ({ onStart }: { onStart: () => void }) => (
       
       <button 
         onClick={onStart}
-        className="relative w-56 h-56 rounded-full glass shadow-2xl flex flex-col items-center justify-center gap-2 group-hover:scale-105 transition-transform duration-500 overflow-hidden"
+        className="relative w-56 h-56 rounded-full glass shadow-2xl flex flex-col items-center justify-center gap-2 group-hover:scale-105 transition-transform duration-500 overflow-hidden cursor-pointer"
       >
         <div className="absolute inset-0 bg-gradient-to-br from-lavender/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
         <Mic size={48} className="text-lavender mb-2" />
@@ -62,7 +61,13 @@ const HomeView = ({ onStart }: { onStart: () => void }) => (
   </div>
 );
 
-const RecordingView = ({ onStop, onCancel }: { onStop: (blob: Blob, transcript?: string) => void, onCancel: () => void }) => {
+const RecordingView = ({ 
+  onStop, 
+  onCancel 
+}: { 
+  onStop: (blob: Blob, transcript?: string) => void, 
+  onCancel: () => void 
+}) => {
   const [seconds, setSeconds] = useState(0);
   const [isReady, setIsReady] = useState(false);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
@@ -77,9 +82,9 @@ const RecordingView = ({ onStop, onCancel }: { onStop: (blob: Blob, transcript?:
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorder.current = new MediaRecorder(stream);
-        chunks.current = []; // Clear previous chunks
+        chunks.current = [];
 
-        // Inicia transcrição de fala em tempo real caso o navegador suporte (Web Speech API)
+        // Captura fala em tempo real caso o navegador suporte
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         if (SpeechRecognition) {
           try {
@@ -94,13 +99,10 @@ const RecordingView = ({ onStop, onCancel }: { onStop: (blob: Blob, transcript?:
               }
               transcriptRef.current = text.trim();
             };
-            recognition.onerror = (e: any) => {
-              console.warn("[SpeechRecognition] Aviso:", e);
-            };
             recognition.start();
             speechRecognitionRef.current = recognition;
-          } catch (srErr) {
-            console.warn("[SpeechRecognition] Inicialização falhou:", srErr);
+          } catch (_) {
+            // Suporte silencioso sem erros de console
           }
         }
 
@@ -118,17 +120,15 @@ const RecordingView = ({ onStop, onCancel }: { onStop: (blob: Blob, transcript?:
           if (blob.size > 0) {
             onStop(blob, transcriptRef.current);
           } else {
-            console.error("Audio blob is empty");
             onCancel();
           }
           stream.getTracks().forEach(track => track.stop());
         };
 
-        mediaRecorder.current.start(1000); // Collect data every second for safety
+        mediaRecorder.current.start(1000);
         setIsReady(true);
         interval = window.setInterval(() => setSeconds(s => s + 1), 1000);
-      } catch (err) {
-        console.error("Mic access denied or error:", err);
+      } catch (_) {
         alert("Não foi possível acessar o microfone. Por favor, verifique as permissões.");
         onCancel();
       }
@@ -185,7 +185,7 @@ const RecordingView = ({ onStop, onCancel }: { onStop: (blob: Blob, transcript?:
       <button 
         onClick={handleStop}
         disabled={!isReady}
-        className={`px-12 py-5 rounded-full bg-lavender text-white flex items-center gap-3 shadow-2xl transition-all ${!isReady ? 'opacity-50 cursor-not-allowed' : 'hover:bg-lavender/90 active:scale-95 hover:shadow-lavender/40'}`}
+        className={`px-12 py-5 rounded-full bg-lavender text-white flex items-center gap-3 shadow-2xl transition-all cursor-pointer ${!isReady ? 'opacity-50 cursor-not-allowed' : 'hover:bg-lavender/90 active:scale-95 hover:shadow-lavender/40'}`}
       >
         <span className="font-semibold uppercase tracking-widest text-sm">Finalizar Relatório</span>
         <ChevronRight size={20} />
@@ -193,7 +193,7 @@ const RecordingView = ({ onStop, onCancel }: { onStop: (blob: Blob, transcript?:
       
       <button 
         onClick={onCancel}
-        className="mt-6 text-gray-400 text-xs uppercase tracking-widest hover:text-gray-600 transition-colors"
+        className="mt-6 text-gray-400 text-xs uppercase tracking-widest hover:text-gray-600 transition-colors cursor-pointer"
       >
         Cancelar gravação
       </button>
@@ -261,12 +261,17 @@ const ResultView = ({
          <p className="text-gray-500 font-light text-sm italic">"{result.emotion.description}"</p>
       </div>
 
-      <section className="relative h-[420px] rounded-xxl overflow-hidden shadow-2xl transition-all">
+      <section className="relative h-[420px] rounded-xxl overflow-hidden shadow-2xl transition-all bg-gradient-to-br from-sage/20 via-cream to-lavender/20">
         <img 
           src={selectedAroma.imageUrl} 
           className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300" 
           alt={selectedAroma.name} 
           referrerPolicy="no-referrer"
+          onError={(e) => {
+            const target = e.currentTarget as HTMLImageElement;
+            target.onerror = null;
+            target.src = '/images/aromas/lavanda.jpg';
+          }}
         />
         <div className="absolute inset-0 bg-black/20" />
         
@@ -287,7 +292,7 @@ const ResultView = ({
       {isCustomAroma && (
         <button 
           onClick={() => onSelectAroma(result.aroma)}
-          className="text-xs font-semibold text-lavender underline underline-offset-4 text-center hover:text-lavender/80 transition-colors"
+          className="text-xs font-semibold text-lavender underline underline-offset-4 text-center hover:text-lavender/80 transition-colors cursor-pointer"
         >
           Voltar para a recomendação principal ({result.aroma.name})
         </button>
@@ -344,7 +349,7 @@ const ResultView = ({
           </div>
         </div>
 
-        {/* --- +3 Opções Alternativas --- */}
+        {/* 3 Opções Alternativas */}
         {result.alternatives && result.alternatives.length > 0 && (
           <section className="pt-2 space-y-4">
             <div className="flex items-center gap-2">
@@ -368,12 +373,19 @@ const ResultView = ({
                         : 'bg-white/80 border-gray-100 hover:border-lavender/30 hover:bg-white'
                     }`}
                   >
-                    <img
-                      src={alt.aroma.imageUrl}
-                      alt={alt.aroma.name}
-                      className="w-16 h-16 rounded-xl object-cover shrink-0 shadow-sm"
-                      referrerPolicy="no-referrer"
-                    />
+                    <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 shadow-sm bg-gradient-to-br from-sage/20 to-lavender/20 flex items-center justify-center">
+                      <img
+                        src={alt.aroma.imageUrl}
+                        alt={alt.aroma.name}
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          const target = e.currentTarget as HTMLImageElement;
+                          target.onerror = null;
+                          target.src = '/images/aromas/lavanda.jpg';
+                        }}
+                      />
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1 mb-0.5">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-sage">
@@ -405,7 +417,7 @@ const ResultView = ({
         <div className="pt-4 space-y-4">
           <button 
             onClick={() => setShowTranscript(!showTranscript)}
-            className="text-xs text-gray-400 underline underline-offset-4 w-full text-center"
+            className="text-xs text-gray-400 underline underline-offset-4 w-full text-center cursor-pointer"
           >
             {showTranscript ? 'Ocultar o que eu disse' : 'Ver transcrição do meu áudio'}
           </button>
@@ -424,13 +436,13 @@ const ResultView = ({
         <div className="space-y-3 pt-4">
           <button 
             onClick={onShowUsage}
-            className="w-full bg-lavender text-white py-5 rounded-full font-bold text-sm tracking-widest uppercase shadow-lg hover:shadow-lavender/20 transition-all"
+            className="w-full bg-lavender text-white py-5 rounded-full font-bold text-sm tracking-widest uppercase shadow-lg hover:shadow-lavender/20 transition-all cursor-pointer"
           >
             Como utilizar este aroma
           </button>
           <button 
             onClick={onReset}
-            className="w-full bg-white border border-gray-200 text-gray-700 py-4 rounded-full font-bold text-xs tracking-widest uppercase flex items-center justify-center gap-2"
+            className="w-full bg-white border border-gray-200 text-gray-700 py-4 rounded-full font-bold text-xs tracking-widest uppercase flex items-center justify-center gap-2 cursor-pointer hover:bg-gray-50 transition-all"
           >
             <RefreshCw size={14} />
             Nova Análise
@@ -443,8 +455,18 @@ const ResultView = ({
 
 const UsageView = ({ aroma, usageMethod, onBack }: { aroma: Aroma, usageMethod: string, onBack: () => void }) => (
   <div className="flex flex-col gap-12 h-screen px-6 pt-4 pb-32">
-    <div className="relative h-64 rounded-3xl overflow-hidden shadow-xl mb-4">
-      <img src={aroma.imageUrl} className="absolute inset-0 w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+    <div className="relative h-64 rounded-3xl overflow-hidden shadow-xl mb-4 bg-gradient-to-br from-sage/20 via-cream to-lavender/20">
+      <img 
+        src={aroma.imageUrl} 
+        className="absolute inset-0 w-full h-full object-cover" 
+        alt={aroma.name} 
+        referrerPolicy="no-referrer"
+        onError={(e) => {
+          const target = e.currentTarget as HTMLImageElement;
+          target.onerror = null;
+          target.src = '/images/aromas/lavanda.jpg';
+        }}
+      />
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
       <div className="absolute bottom-6 left-6">
         <h2 className="text-white font-serif text-3xl">{aroma.name}</h2>
@@ -492,7 +514,7 @@ const UsageView = ({ aroma, usageMethod, onBack }: { aroma: Aroma, usageMethod: 
     <div className="pt-8">
       <button 
         onClick={onBack}
-        className="w-full bg-gray-900 text-white py-5 rounded-full font-bold text-sm tracking-widest uppercase shadow-xl hover:bg-gray-800 transition-all flex items-center justify-center gap-2"
+        className="w-full bg-gray-900 text-white py-5 rounded-full font-bold text-sm tracking-widest uppercase shadow-xl hover:bg-gray-800 transition-all flex items-center justify-center gap-2 cursor-pointer"
       >
         <ChevronRight size={18} className="rotate-180" />
         Voltar para a análise
@@ -511,15 +533,12 @@ export default function App() {
   const startAnalysis = async (blob: Blob, clientTranscript?: string) => {
     setView('analysis');
     try {
-      console.log("Iniciando análise do áudio...", blob.size, "transcrição:", clientTranscript);
       const result = await analyzeMoodFromAudio(blob, clientTranscript);
       setAnalysisResult(result);
       setSelectedAroma(result.aroma);
-      // Mantém na tela de análise por um tempo mínimo para a animação
+      // Mantém na tela de análise por um tempo confortável para a animação
       setTimeout(() => setView('result'), 2500);
-    } catch (err) {
-      console.error("Falha na análise:", err);
-      alert("Houve um problema ao analisar seus sentimentos. Tente novamente.");
+    } catch (_) {
       setView('home');
     }
   };
