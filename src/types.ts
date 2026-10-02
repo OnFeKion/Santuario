@@ -11,7 +11,7 @@ export interface Aroma {
   imageUrl: string;
 }
 
-export type View = 'home' | 'recording' | 'analysis' | 'result' | 'history' | 'usage';
+export type View = 'home' | 'recording' | 'analysis' | 'result' | 'history' | 'usage' | 'not_heard' | 'catalog';
 
 export interface AlternativeAroma {
   aroma: Aroma;
@@ -19,14 +19,16 @@ export interface AlternativeAroma {
 }
 
 export interface AnalysisResult {
-  emotion: {
+  notHeard?: boolean;
+  notHeardMessage?: string;
+  emotion?: {
     label: string;
     description: string;
   };
-  aroma: Aroma;
-  aromaExplanation: string;
-  alternatives: AlternativeAroma[];
-  usageMethod: string;
-  quote: string;
-  transcription: string;
+  aroma?: Aroma;
+  aromaExplanation?: string;
+  alternatives?: AlternativeAroma[];
+  usageMethod?: string;
+  quote?: string;
+  transcription?: string;
 }
