@@ -115,18 +115,52 @@ const RecordingView = ({
 }) => {
   const [seconds, setSeconds] = useState(0);
   const [isReady, setIsReady] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const chunks = useRef<Blob[]>([]);
   const speechRecognitionRef = useRef<any>(null);
   const transcriptRef = useRef<string>("");
+  const isCancelledRef = useRef(false);
 
   useEffect(() => {
     let interval: number;
+    isCancelledRef.current = false;
+
+    const getSupportedMimeType = (): string | undefined => {
+      if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
+        return undefined;
+      }
+      const candidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/ogg;codecs=opus',
+        'audio/aac'
+      ];
+      return candidates.find((type) => MediaRecorder.isTypeSupported(type));
+    };
     
     const startRecording = async () => {
       try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setMicError("Seu navegador ou contexto atual (verifique se está usando HTTPS) não permite acesso ao microfone.");
+          return;
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder.current = new MediaRecorder(stream);
+        if (isCancelledRef.current) {
+          stream.getTracks().forEach(track => track.stop());
+          return;
+        }
+        streamRef.current = stream;
+
+        const chosenMimeType = getSupportedMimeType();
+        const recorder = chosenMimeType
+          ? new MediaRecorder(stream, { mimeType: chosenMimeType })
+          : new MediaRecorder(stream);
+
+        mediaRecorder.current = recorder;
         chunks.current = [];
 
         // Captura fala em tempo real caso o navegador suporte nativamente
@@ -151,37 +185,43 @@ const RecordingView = ({
           }
         }
 
-        mediaRecorder.current.ondataavailable = (e) => {
-          if (e.data.size > 0) chunks.current.push(e.data);
+        recorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) chunks.current.push(e.data);
         };
 
-        mediaRecorder.current.onstop = () => {
+        recorder.onstop = () => {
           if (speechRecognitionRef.current) {
             try {
               speechRecognitionRef.current.stop();
             } catch (_) {}
           }
-          const blob = new Blob(chunks.current, { type: 'audio/webm' });
-          if (blob.size > 0) {
+          stream.getTracks().forEach(track => track.stop());
+
+          if (isCancelledRef.current) {
+            return;
+          }
+
+          const actualMime = recorder.mimeType || chunks.current[0]?.type || chosenMimeType || 'audio/webm';
+          const blob = new Blob(chunks.current, { type: actualMime });
+          if (blob.size > 0 || transcriptRef.current.trim().length > 0) {
             onStop(blob, transcriptRef.current);
           } else {
             onCancel();
           }
-          stream.getTracks().forEach(track => track.stop());
         };
 
-        mediaRecorder.current.start(1000);
+        recorder.start(250);
         setIsReady(true);
         interval = window.setInterval(() => setSeconds(s => s + 1), 1000);
       } catch (_) {
-        alert("Não foi possível acessar o microfone. Por favor, verifique as permissões.");
-        onCancel();
+        setMicError("Não foi possível acessar o microfone. Por favor, permita o uso do microfone nas configurações do navegador.");
       }
     };
 
     startRecording();
 
     return () => {
+      isCancelledRef.current = true;
       if (interval) clearInterval(interval);
       if (speechRecognitionRef.current) {
         try {
@@ -189,28 +229,70 @@ const RecordingView = ({
         } catch (_) {}
       }
       if (mediaRecorder.current?.state === 'recording') {
-        mediaRecorder.current.stop();
+        try {
+          mediaRecorder.current.stop();
+        } catch (_) {}
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
       }
     };
   }, []);
 
   const handleStop = () => {
     if (mediaRecorder.current && mediaRecorder.current.state === 'recording') {
+      isCancelledRef.current = false;
+      try {
+        mediaRecorder.current.requestData?.();
+      } catch (_) {}
       mediaRecorder.current.stop();
     }
   };
 
+  const handleCancel = () => {
+    isCancelledRef.current = true;
+    if (mediaRecorder.current && mediaRecorder.current.state === 'recording') {
+      try {
+        mediaRecorder.current.stop();
+      } catch (_) {}
+    }
+    onCancel();
+  };
+
+  if (micError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center px-6">
+        <div className="w-20 h-20 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mb-6">
+          <MicOff size={32} />
+        </div>
+        <h2 className="font-serif text-3xl text-gray-900 mb-3">Microfone indisponível</h2>
+        <p className="text-gray-600 font-light text-sm max-w-xs leading-relaxed mb-8">{micError}</p>
+        <button
+          onClick={handleCancel}
+          className="px-8 py-4 rounded-full bg-lavender text-white font-semibold uppercase tracking-wider text-xs shadow-lg cursor-pointer"
+        >
+          Voltar ao início
+        </button>
+      </div>
+    );
+  }
+
+  const formattedTime = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-6">
-      <div className="mb-12">
+      <div className="mb-10">
         <h2 className="font-serif text-3xl text-lavender flex items-center justify-center gap-3">
           <span className={`w-3 h-3 bg-red-500 rounded-full ${isReady ? 'animate-pulse' : 'opacity-20'} shadow-[0_0_12px_rgba(239,68,68,0.5)]`} />
           {isReady ? 'Ouvindo você...' : 'Preparando...'}
         </h2>
         <p className="text-gray-500 font-light mt-2">Sinta-se à vontade para falar o quanto precisar. Este é o seu espaço.</p>
+        {isReady && (
+          <p className="text-xs font-mono text-lavender/80 tracking-widest mt-3">{formattedTime}</p>
+        )}
       </div>
 
-      <div className="flex items-center gap-1.5 h-32 mb-20 overflow-hidden">
+      <div className="flex items-center gap-1.5 h-32 mb-16 overflow-hidden">
         {[...Array(20)].map((_, i) => (
           <motion.div
             key={i}
@@ -237,7 +319,7 @@ const RecordingView = ({
       </button>
       
       <button 
-        onClick={onCancel}
+        onClick={handleCancel}
         className="mt-6 text-gray-400 text-xs uppercase tracking-widest hover:text-gray-600 transition-colors cursor-pointer"
       >
         Cancelar gravação
@@ -279,58 +361,67 @@ const AnalysisView = () => (
 
 const NotHeardView = ({ 
   message, 
+  errorMessage,
   onRetry, 
   onCancel 
 }: { 
   message?: string; 
+  errorMessage?: string;
   onRetry: () => void; 
   onCancel: () => void; 
-}) => (
-  <div className="flex flex-col items-center justify-center h-full text-center px-6 py-12">
-    <motion.div 
-      initial={{ scale: 0.8, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      className="w-24 h-24 rounded-full bg-amber-50 border border-amber-200/60 shadow-lg flex items-center justify-center text-amber-600 mb-8"
-    >
-      <MicOff size={40} className="stroke-[1.5]" />
-    </motion.div>
+}) => {
+  const isTechnicalError = Boolean(errorMessage);
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center px-6 py-12">
+      <motion.div 
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="w-24 h-24 rounded-full bg-amber-50 border border-amber-200/60 shadow-lg flex items-center justify-center text-amber-600 mb-8"
+      >
+        <MicOff size={40} className="stroke-[1.5]" />
+      </motion.div>
 
-    <motion.div
-      initial={{ y: 15, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ delay: 0.1 }}
-      className="space-y-4 max-w-sm"
-    >
-      <span className="text-[11px] uppercase tracking-[0.25em] text-amber-700/80 font-bold px-3 py-1 rounded-full bg-amber-100/60 inline-block">
-        Atenção à escuta
-      </span>
-      <h2 className="font-serif text-3xl text-gray-900">Não consegui te ouvir</h2>
-      <p className="text-gray-600 font-light text-base leading-relaxed">
-        {message || "Não conseguimos captar as suas palavras com clareza suficiente para interpretar sua sensação."}
-      </p>
-      <div className="p-4 rounded-2xl bg-white border border-gray-100 shadow-sm text-xs text-gray-500 font-light leading-relaxed mt-4">
-        A indicação aromaterapêutica só acontece a partir da interpretação real do seu relato, sem suposições automáticas.
+      <motion.div
+        initial={{ y: 15, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.1 }}
+        className="space-y-4 max-w-sm"
+      >
+        <span className="text-[11px] uppercase tracking-[0.25em] text-amber-700/80 font-bold px-3 py-1 rounded-full bg-amber-100/60 inline-block">
+          {isTechnicalError ? 'Falha na conexão com a IA' : 'Atenção à escuta'}
+        </span>
+        <h2 className="font-serif text-3xl text-gray-900">
+          {isTechnicalError ? 'Não foi possível analisar' : 'Não consegui te ouvir'}
+        </h2>
+        <p className="text-gray-600 font-light text-base leading-relaxed">
+          {errorMessage || message || "Não conseguimos captar as suas palavras com clareza suficiente para interpretar sua sensação."}
+        </p>
+        <div className="p-4 rounded-2xl bg-white border border-gray-100 shadow-sm text-xs text-gray-500 font-light leading-relaxed mt-4">
+          {isTechnicalError
+            ? 'Verifique se a rota /api/analyze e a variável GEMINI_API_KEY estão configuradas no ambiente de hospedagem.'
+            : 'A indicação aromaterapêutica só acontece a partir da interpretação real do seu relato, sem suposições automáticas.'}
+        </div>
+      </motion.div>
+
+      <div className="w-full max-w-xs space-y-3 mt-10">
+        <button 
+          onClick={onRetry}
+          className="w-full bg-lavender text-white py-4 rounded-full font-semibold text-sm tracking-wider uppercase shadow-xl hover:bg-lavender/90 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <RefreshCw size={18} />
+          Gravar Relato Novamente
+        </button>
+
+        <button 
+          onClick={onCancel}
+          className="w-full py-3 text-gray-400 hover:text-gray-600 text-xs uppercase tracking-widest transition-colors cursor-pointer"
+        >
+          Voltar ao início
+        </button>
       </div>
-    </motion.div>
-
-    <div className="w-full max-w-xs space-y-3 mt-10">
-      <button 
-        onClick={onRetry}
-        className="w-full bg-lavender text-white py-4 rounded-full font-semibold text-sm tracking-wider uppercase shadow-xl hover:bg-lavender/90 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-      >
-        <RefreshCw size={18} />
-        Gravar Relato Novamente
-      </button>
-
-      <button 
-        onClick={onCancel}
-        className="w-full py-3 text-gray-400 hover:text-gray-600 text-xs uppercase tracking-widest transition-colors cursor-pointer"
-      >
-        Voltar ao início
-      </button>
     </div>
-  </div>
-);
+  );
+};
 
 const ResultView = ({ 
   result, 
@@ -805,7 +896,7 @@ export default function App() {
     try {
       const result = await analyzeMoodFromAudio(blob, clientTranscript);
       setAnalysisResult(result);
-      if (result.notHeard || !result.aroma) {
+      if (result.error || result.notHeard || !result.aroma) {
         setView('not_heard');
         return;
       }
@@ -814,8 +905,8 @@ export default function App() {
       setTimeout(() => setView('result'), 2000);
     } catch (_) {
       setAnalysisResult({
-        notHeard: true,
-        notHeardMessage: "Não consegui ouvir ou compreender o que você disse. Por favor, tente gravar novamente."
+        notHeard: false,
+        error: "Não foi possível comunicar com o servidor de análise. Por favor, tente novamente."
       });
       setView('not_heard');
     }
@@ -881,6 +972,7 @@ export default function App() {
             <motion.div key="not_heard" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="h-full">
               <NotHeardView 
                 message={analysisResult?.notHeardMessage}
+                errorMessage={analysisResult?.error}
                 onRetry={() => setView('recording')}
                 onCancel={() => setView('home')}
               />

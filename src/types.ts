@@ -21,6 +21,8 @@ export interface AlternativeAroma {
 export interface AnalysisResult {
   notHeard?: boolean;
   notHeardMessage?: string;
+  error?: string;
+  errorCode?: string;
   emotion?: {
     label: string;
     description: string;
